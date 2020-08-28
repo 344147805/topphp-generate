@@ -472,9 +472,9 @@ trait BaseModel
                         array_push($mainField, substr($field, 5));
                         unset($fields[$k]);
                     } elseif (!preg_match("/\./", $field) && isset($this->schema) && in_array(
-                        $field,
-                        array_keys($this->schema)
-                    )) {
+                            $field,
+                            array_keys($this->schema)
+                        )) {
                         // 区分是否是主表字段
                         array_push($mainField, $field);
                         unset($fields[$k]);
@@ -1268,9 +1268,9 @@ trait BaseModel
                         $data->delete();
                         return $delNum;
                     } elseif (isset($this->schema[$deleteTimeField]) && in_array(
-                        $this->schema[$deleteTimeField],
-                        $dbTimeType
-                    )) {
+                            $this->schema[$deleteTimeField],
+                            $dbTimeType
+                        )) {
                         $time = $this->genDateTime($this->schema[$deleteTimeField]);
                     } elseif (isset($this->schema['delete_time'])) {
                         $deleteTimeField = 'delete_time';
@@ -1383,9 +1383,9 @@ trait BaseModel
                         $data->delete();
                         return $delNum;
                     } elseif (isset($this->schema[$deleteTimeField]) && in_array(
-                        $this->schema[$deleteTimeField],
-                        $dbTimeType
-                    )) {
+                            $this->schema[$deleteTimeField],
+                            $dbTimeType
+                        )) {
                         $time = $this->genDateTime($this->schema[$deleteTimeField]);
                     } elseif (isset($this->schema['delete_time'])) {
                         $deleteTimeField = 'delete_time';
@@ -2311,9 +2311,10 @@ trait BaseModel
      * @param array $fields 字段数组（主表别名统一默认为字符串“this”，主表字段筛选，统一使用“this.字段名”）
      *
      * @param array $with 连接的子表 规则同上述 setBaseQuery 方法的参数 join 类似
-     *                    释义：["子表名 (别名)", "子表关联字段", "(主表关联字段)"]
+     *                    释义：["子表名 (别名)", "子表关联字段", "(主表关联字段)", "子表过滤where条件(可选)"]
      *                    Tips：如果主表与子表关联字段名一样，第三个【主表关联字段名】参数可省略
      *
+     * @param array $order 主表排序，原生排序SQL语句 或 数组 如：['this.price','this.id'=>'desc'] 生成的SQL为 ORDER BY `this.price`,`this.id` desc
      * @param string $isOr 是否是 OR 查询 默认 AND
      * @param bool $isPaginate 是否分页
      * @param int $pageLimit 每页显示条数，默认 0 自动取 PaginateEnum 枚举类配置的条数
@@ -2323,6 +2324,7 @@ trait BaseModel
         $where = [],
         array $fields = [],
         array $with = [],
+        $order = [],
         string $isOr = "and",
         bool $isPaginate = false,
         int $pageLimit = 0
@@ -2372,7 +2374,15 @@ trait BaseModel
                     $model = static::alias($alias)->where("this." . $idName, $where);
                 }
             }
+            if (!empty($order)) {
+                $model = $model->order($order);
+            }
             if (!empty($with) && count($with) > 1) {
+                // 提取子表查询条件
+                $childWhere = [];
+                if (isset($with[3])) {
+                    $childWhere = $with[3];
+                }
                 // 过滤主表字段
                 $mainField = [];
                 if (is_array($fields) && !empty($fields) && $this->arrayLevel($fields) == 1) {
@@ -2383,9 +2393,9 @@ trait BaseModel
                                 array_push($mainField, substr($field, 5));
                                 unset($fields[$k]);
                             } elseif (!preg_match("/\./", $field) && isset($this->schema) && in_array(
-                                $field,
-                                array_keys($this->schema)
-                            )) {
+                                    $field,
+                                    array_keys($this->schema)
+                                )) {
                                 // 区分是否是主表字段
                                 array_push($mainField, $field);
                                 unset($fields[$k]);
@@ -2450,6 +2460,23 @@ trait BaseModel
                             }
                             $child = $childClass::alias($tbAlias)->field($selectField)
                                 ->where($foreignKey, "in", $mainKeyArray);
+                            // 构造子表查询条件
+                            if (!empty($childWhere)) {
+                                $resWhere = $this->parseWhere($childWhere);
+                                if (is_array($childWhere) || $childWhere instanceof \Closure) {
+                                    if (!empty($resWhere["whereNotNull"])) {
+                                        foreach ($resWhere["whereNotNull"] as $w) {
+                                            $child->whereNotNull($w);
+                                        }
+                                    }
+                                    if (!empty($resWhere["whereExp"])) {
+                                        $child->where($resWhere["whereExp"]);
+                                    }
+                                    if (!empty($resWhere["where"])) {
+                                        $child->where($resWhere["where"]);
+                                    }
+                                }
+                            }
                             $child = $this->filterSoftDelData(
                                 $child,
                                 MethodEnum::EXCLUDE_SOFT,
